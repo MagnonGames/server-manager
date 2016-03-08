@@ -1,0 +1,157 @@
+#!/bin/bash
+
+proxyName="proxy"
+LEName="ssl-provider"
+
+restartPolicy="always"
+
+function error() {
+	helpMessage="Check help for more information."
+	if [[ -u $2 || $2 = true ]]; then
+		helpMessage=""
+	fi
+	echo "E: $1 $helpMessage"
+	exit 1
+}
+
+function getDockerID() {
+	echo $(docker ps -q --filter "name=$1")
+}
+
+case "$1" in
+	"install" | "i")
+		install=true
+		;;
+	"proxy" | "p")
+		createProxy=true
+		;;
+	"run" | "r")
+		run=true
+		;;
+	"command" | "c")
+		command=true
+		;;
+	"wipe" | "w")
+		wipe=true
+		;;
+	"help" | "h" | "--help" | "-h")
+		help=true
+		;;
+esac
+
+if [ "$install" = true ]; then
+	echo "Installing docker..."
+	wget -qO- https://get.docker.com/ | sh
+	if [[ -n ${2+x} && $2 = "-c" ]]; then
+		echo "Installing python-pip..."
+		if [ $(sudo apt-get install python-pip) = "0" ]; then
+			echo "Installing docker-compose..."
+			sudo pip install docker-compose
+		else
+			error "Installing python-pip failed! (apt-get returned non 0 exit code)"
+		fi
+	fi
+elif [ "$createProxy" = true ]; then
+	$proxyParams="-d -p 80:80 -p 443:443
+		--name $proxyName
+		-v /var/www/certs:/etc/nginx/certs:ro
+		-v /etc/nginx/vhost.d
+		-v /usr/share/nginx/html
+		-v /var/run/docker.sock:/tmp/docker.sock:ro"
+
+	echo "Setting up proxy..."
+	docker run $proxyParams jwilder/nginx-proxy
+
+	if [ "$PRODUCTION" = true ]; then
+		echo "Setting up LE provider..."
+
+		domains = "magnon.net,www.magnon.net"
+
+		docker run -d \
+			--name $LEName
+			-e VIRTUAL_HOST="$domains" \
+		    -e LETSENCRYPT_HOST="$domains" \
+		    -e LETSENCRYPT_EMAIL="realmagnon@gmail.com"
+			-v /var/www/certs:/etc/nginx/certs:rw \
+			--volumes-from $proxyName \
+			-v /var/run/docker.sock:/var/run/docker.sock:ro \
+			jrcs/letsencrypt-nginx-proxy-companion
+	fi
+
+elif [ "$run" = true ]; then
+
+	if [[ -z ${2+x} || -z ${3+x} ]]; then
+		error "Not enough paramaters."
+	fi
+
+	params="${@:4} -d -e VIRTUAL_HOST=$3"
+
+	if [ "$PRODUCTION" = true ]; then
+		echo "production"
+		params="$params --restart=$restartPolicy"
+	fi
+
+	docker run $params $2
+
+elif [ "$command" = true ]; then
+
+	if [[ -z ${2+x} || -z ${3+x} ]]; then
+		error "Not enough paramaters."
+	fi
+
+	containerID=$(getDockerID $2)
+
+	if [ -z "${containerID// }" ]; then
+		error "No container with name $2 found." true
+	fi
+
+	docker exec -t $(getDockerID $2) ${@:3}
+
+elif [ "$wipe" = true ]; then
+
+	echo "Wiping docker containers..."
+
+	proxyID=$(getDockerID $proxyName)
+	allContainerIDs=$(docker ps -a -q)
+
+	toRemove=${allContainerIDs//$proxyID}
+
+	if [ "$toRemove" = "" ]; then
+		error "No containers to wipe." true
+	fi
+
+	if [ "$2" = "-d" ]; then
+		toRemove=$allContainerIDs
+	fi
+
+	docker stop $toRemove
+	docker rm $toRemove
+
+elif [ "$help" = true ]; then
+
+	read -d '' help <<- EOF
+		Deployment script for the magnon.net website.
+
+		if you found this useful, feel free to use it in your own project
+		and consider giving us a star on GitHub! :D
+
+		Usage: ./manage <action> [<args>]
+
+		Actions:
+		help, h		Displays this message
+		deploy, d	Runs the proxy server (and Let's encrypt if in production)
+		run, r		Runs a docker container with a link to the proxy
+					Syntax: <docker repository> <domains> [args]
+		command, c	Executes a command on a container
+					Syntax: <container name> <command with args>
+		install, i	Installs the latest version of docker. Also installs
+					docker-compose if -c flag was provided.
+	EOF
+
+	echo "$help"
+
+else
+
+	error "No valid action specified."
+
+fi
