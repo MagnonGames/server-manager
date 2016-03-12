@@ -52,11 +52,11 @@ if [ "$install" = true ]; then
 		fi
 	fi
 elif [ "$createProxy" = true ]; then
-	$proxyParams="-d -p 80:80 -p 443:443
-		--name $proxyName
-		-v /var/www/certs:/etc/nginx/certs:ro
-		-v /etc/nginx/vhost.d
-		-v /usr/share/nginx/html
+	proxyParams="-d -p 80:80 -p 443:443 \
+		--name $proxyName \
+		-v /var/www/certs:/etc/nginx/certs:ro \
+		-v /etc/nginx/vhost.d \
+		-v /usr/share/nginx/html \
 		-v /var/run/docker.sock:/tmp/docker.sock:ro"
 
 	echo "Setting up proxy..."
@@ -65,13 +65,13 @@ elif [ "$createProxy" = true ]; then
 	if [ "$PRODUCTION" = true ]; then
 		echo "Setting up LE provider..."
 
-		domains = "magnon.net,www.magnon.net"
+		domains="magnon.net,www.magnon.net"
 
 		docker run -d \
-			--name $LEName
+			--name $LEName \
 			-e VIRTUAL_HOST="$domains" \
 		    -e LETSENCRYPT_HOST="$domains" \
-		    -e LETSENCRYPT_EMAIL="realmagnon@gmail.com"
+		    -e LETSENCRYPT_EMAIL="realmagnon@gmail.com" \
 			-v /var/www/certs:/etc/nginx/certs:rw \
 			--volumes-from $proxyName \
 			-v /var/run/docker.sock:/var/run/docker.sock:ro \
@@ -139,7 +139,7 @@ elif [ "$help" = true ]; then
 
 		Actions:
 		help, h		Displays this message
-		deploy, d	Runs the proxy server (and Let's encrypt if in production)
+		proxy, p	Runs the proxy server (and Let's encrypt if in production)
 		run, r		Runs a docker container with a link to the proxy
 					Syntax: <docker repository> <domains> [args]
 		command, c	Executes a command on a container
