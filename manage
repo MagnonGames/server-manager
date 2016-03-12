@@ -116,12 +116,12 @@ elif [ "$wipe" = true ]; then
 
 	toRemove=${allContainerIDs//$proxyID}
 
-	if [ "$toRemove" = "" ]; then
-		error "No containers to wipe." true
-	fi
-
 	if [ "$2" = "-d" ]; then
 		toRemove=$allContainerIDs
+	fi
+
+	if [ "$toRemove" = "" ]; then
+		error "No containers to wipe." true
 	fi
 
 	docker stop $toRemove
